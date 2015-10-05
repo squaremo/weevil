@@ -31,7 +31,9 @@
             $.ajax('/api/', {
               dataType: 'json',
               success: function(services) {
-                this.setState({data: services});
+                if (this.isMounted()) {
+                  this.setState({data: services});
+                }
               }.bind(this)
             });
         }
@@ -41,9 +43,40 @@
         render: function() {
           return (
             <div className="serviceView">
-              {this.props.data.name}
+              <span>{this.props.data.name} ({this.props.data.children})</span>
+              <InstanceList service={this.props.data.name}/>
             </div>
           );
+        }
+      });
+
+      var InstanceList = React.createClass({
+        getInitialState: function() {
+          return {data: []}
+        },
+        componentDidMount: function() {
+          $.ajax('/api/'+this.props.service+'/', {
+            dataType: 'json',
+            success: function(service) {
+              if (this.isMounted()) {
+                this.setState({data: service.children});
+              }
+            }.bind(this)
+          });
+        },
+        render: function() {
+          var instanceNodes = this.state.data.map(function(i) {
+            return (<li><InstanceView instance={i}/></li>)
+          });
+          return (<ul>
+            {instanceNodes}
+          </ul>);
+        }
+      });
+
+      var InstanceView = React.createClass({
+        render: function() {
+          return (<span>{this.props.instance.name}</span>)
         }
       });
 

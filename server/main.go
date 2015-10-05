@@ -140,8 +140,7 @@ func servicesFromNode(node *etcd.Node) ([]interface{}, error) {
 func instancesFromNode(node *etcd.Node) (map[string]interface{}, error) {
 	result := map[string]interface{}{}
 	result["name"] = node.Key[prefixLen:]
-	children := map[string]interface{}{}
-	result["children"] = children
+	children := []interface{}{}
 	serviceNameLen := len(node.Key) + 1
 	for _, i := range node.Nodes {
 		details, err := detailsFromNode(i)
@@ -151,9 +150,11 @@ func instancesFromNode(node *etcd.Node) (map[string]interface{}, error) {
 		if strings.HasSuffix(i.Key, "_details") {
 			result["details"] = details
 		} else {
-			children[i.Key[serviceNameLen:]] = details
+			details["name"] = i.Key[serviceNameLen:]
+			children = append(children, details)
 		}
 	}
+	result["children"] = children
 	return result, nil
 }
 
