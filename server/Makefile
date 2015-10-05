@@ -1,7 +1,8 @@
-BUILD_DOCKER_ARGS= -v `pwd`:/home/go/src/weevil/server \
-	  	  --workdir=/home/go/src/weevil/server \
+BUILD_DOCKER_ARGS=-v `pwd`:/home/go/src/weevil/server \
+		  -e CGO_ENABLED=0 \
+		  --workdir=/home/go/src/weevil/server \
 		  -e GOPATH=/home/go
-BUILD_FLAGS=-ldflags "-extldflags \"-static\"" -tags netgo
+BUILD_FLAGS=-ldflags "-s -extldflags \"-static\"" -tags netgo -a
 
 .PHONY: all clean
 
@@ -10,7 +11,9 @@ all: server.uptodate
 build.uptodate:
 	docker run --name=weevil-build $(BUILD_DOCKER_ARGS) \
 		google/golang \
-		go get -tags netgo .
+			sh -c "go clean -i net && \
+			go install -tags netgo std && \
+			go get -tags netgo ."
 	docker commit weevil-build weevil/build
 	docker rm -f weevil-build
 	touch build.uptodate

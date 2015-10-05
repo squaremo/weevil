@@ -1,4 +1,4 @@
-FROM google/golang
+FROM scratch
 
 WORKDIR /home/weevil
 COPY ./weevil /home/weevil/
