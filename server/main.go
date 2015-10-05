@@ -114,11 +114,13 @@ func (api *api) listInstances(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(instances)
 }
 
-func servicesFromNode(node *etcd.Node) (map[string]interface{}, error) {
-	result := map[string]interface{}{}
+func servicesFromNode(node *etcd.Node) ([]interface{}, error) {
+	result := []interface{}{}
 	for _, s := range node.Nodes {
 		children := 0
 		service := map[string]interface{}{}
+		service["name"] = s.Key[prefixLen:]
+		result = append(result, service)
 		for _, i := range s.Nodes {
 			if strings.HasSuffix(i.Key, "_details") {
 				details, err := detailsFromNode(i)
@@ -131,7 +133,6 @@ func servicesFromNode(node *etcd.Node) (map[string]interface{}, error) {
 			}
 		}
 		service["children"] = children
-		result[s.Key[prefixLen:]] = service
 	}
 	return result, nil
 }

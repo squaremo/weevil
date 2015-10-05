@@ -4,12 +4,50 @@
     <title>Weevil weevil rock you</title>
     <script type="text/javascript" src="res/js/react.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.23/browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.min.js"></script>
   </head>
   <body>
     <h1>Weave One</h1>
 
+    <div id="list"/>
+
     <script type="text/babel">
 
+      var ServiceList = React.createClass({
+        render: function() {
+          var serviceNodes = this.state.data.map(function(service) {
+            return (<li className=""><ServiceView data={service}/></li>)
+          });
+          return (
+            <ul className="serviceList">
+              {serviceNodes}
+            </ul>
+          );
+        },
+        getInitialState() {
+            return {data: []};
+        },
+        componentDidMount: function() {
+            $.ajax('/api/', {
+              dataType: 'json',
+              success: function(services) {
+                this.setState({data: services});
+              }.bind(this)
+            });
+        }
+      });
+
+      var ServiceView = React.createClass({
+        render: function() {
+          return (
+            <div className="serviceView">
+              {this.props.data.name}
+            </div>
+          );
+        }
+      });
+
+      React.render(<ServiceList />, document.getElementById('list'));
     </script>
   </body>
 </html>
