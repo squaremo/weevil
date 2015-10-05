@@ -19,7 +19,7 @@ build.uptodate:
 	docker rm -f weevil-build
 	touch build.uptodate
 
-server.uptodate: weevil Dockerfile
+server.uptodate: weevil Dockerfile $(STATIC_FILES) ../index.html
 	mkdir -p res
 	cp -R $(STATIC_FILES) res/
 	cp ../index.html ./
