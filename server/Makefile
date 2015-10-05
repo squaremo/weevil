@@ -14,8 +14,7 @@ build.uptodate:
 	docker run --name=weevil-build $(BUILD_DOCKER_ARGS) \
 		google/golang \
 			sh -c "go clean -i net && \
-			go install -tags netgo std && \
-			go get -tags netgo ."
+			go install -tags netgo std"
 	docker commit weevil-build weevil/build
 	docker rm -f weevil-build
 	touch build.uptodate
@@ -29,7 +28,9 @@ server.uptodate: weevil Dockerfile
 
 weevil: build.uptodate *.go
 	docker run --rm $(BUILD_DOCKER_ARGS) \
-		weevil/build go build $(BUILD_FLAGS) -o $@ .
+		weevil/build sh -c \
+			'go get -tags netgo . && \
+			 go build $(BUILD_FLAGS) -o $@ .'
 
 clean:
 	rm -f build.uptodate server.uptodate
