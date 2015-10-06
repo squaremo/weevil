@@ -5,6 +5,8 @@
     <script type="text/javascript" src="res/js/react.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.23/browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.min.js"></script>
+    <script src="res/js/d3.v3.js"></script> 
+    <script src="res/js/rickshaw.min.js"></script>
   </head>
   <body>
     <h1>Weave One</h1>
@@ -56,6 +58,14 @@
         }
       });
 
+      function valuesToSeries(values) {
+        var series = [];
+        for (var i=0; i < values.length; i++) {
+          series.push({x: values[i][0], y: Number(values[i][1])});
+        }
+        return series;
+      }
+
       var InstanceList = React.createClass({
         getInitialState: function() {
           return {data: []}
@@ -85,8 +95,48 @@
       });
 
       var InstanceView = React.createClass({
+        refreshChart: function(graph) {
+          var now = +(new Date()) / 1000;
+          var then = now - 30 * 1000;
+
+          $.ajax('http://192.168.99.100:9090/api/v1/query_range?query=rate(microwiki_http_service_requests{service_instance="'+this.props.instance.name+'"}[10s])&step=10s&start='+then+'&end='+now, {
+            success: function(json) {
+              if (this.isMounted()) {
+                var result = json.data.result;
+                for (var i=0; i < result.length; i++) {
+                  switch (result[i].metric.status) {
+                  case "200":
+                    graph.series[0].data = valuesToSeries(result[i].values);
+                    break;
+                  case "500":
+                    graph.series[1].data = valuesToSeries(result[i].values);
+                    break;
+                  }
+                }
+                graph.render();
+                setTimeout(this.refreshChart.bind(this, graph), 5000);
+              }
+            }.bind(this)
+          });
+        },
+        componentDidMount: function() {
+          var chart = React.findDOMNode(this.refs.chart);
+          var graph = new Rickshaw.Graph({
+            element: chart,
+            renderer: 'line',
+            series: [{color: 'steelblue', name: 'OK', data: []},
+                     {color: 'red', name: 'Error', data:[]}],
+            width: 500,
+            height: 100,
+          });
+          this.refreshChart(graph);
+        },
         render: function() {
-          return (<span>{this.props.instance.name} ({this.props.instance.IPAddress}:{this.props.instance.Port})</span>)
+          return (<div>
+              <span>{this.props.instance.name} ({this.props.instance.IPAddress}:{this.props.instance.Port})</span>
+              <div ref="chart">
+              </div>
+            </div>)
         }
       });
 
