@@ -9,7 +9,7 @@
     <script src="res/js/rickshaw.min.js"></script>
   </head>
   <body>
-    <h1>Weave One</h1>
+    <h1>Weave on</h1>
 
     <div id="list"/>
 
@@ -58,13 +58,19 @@
         }
       });
 
-      function valuesToSeries(values) {
-        var series = [];
-        for (var i=0; i < values.length; i++) {
-          series.push({x: values[i][0], y: Number(values[i][1])});
+      function second(arr) { return arr[1]; }
+      function follows(a, b) { return function(x) { return a(b(x)); }; }
+            
+      function zip(as, bs, fn) {
+        var len = Math.max(as.length, bs.length);
+        var res = new Array(len);
+        for (var i=0; i<len; i++) {
+          res[i] = fn(as[i], bs[i]);
         }
-        return series;
+        return res;
       }
+
+      var intervalSecs = 10;
 
       var InstanceList = React.createClass({
         getInitialState: function() {
@@ -76,7 +82,7 @@
             success: function(service) {
               if (this.isMounted()) {
                 this.setState({data: service.children});
-                setTimeout(this.refreshData, 10000);
+                setTimeout(this.refreshData, intervalSecs * 1000);
               }
             }.bind(this)
           });
@@ -97,35 +103,54 @@
       var InstanceView = React.createClass({
         refreshChart: function(graph) {
           var now = +(new Date()) / 1000;
-          var then = now - 30 * 1000;
+          var then = now - intervalSecs;
 
-          $.ajax('http://192.168.99.100:9090/api/v1/query_range?query=rate(microwiki_http_service_requests{service_instance="'+this.props.instance.name+'"}[10s])&step=10s&start='+then+'&end='+now, {
+          var query = 'query=rate(microwiki_http_service_requests{service_instance="'+this.props.instance.name+'"}['+intervalSecs+'s])';
+          var interval = '&step='+intervalSecs+'s&start='+then+'&end='+now;
+
+          $.ajax('http://192.168.99.100:9090/api/v1/query_range?'+query+interval, {
             success: function(json) {
               if (this.isMounted()) {
                 var result = json.data.result;
+                var okData = [], errData = [];
                 for (var i=0; i < result.length; i++) {
                   switch (result[i].metric.status) {
                   case "200":
-                    graph.series[0].data = valuesToSeries(result[i].values);
+                    okData = result[i].values.map(follows(Number, second));
                     break;
                   case "500":
-                    graph.series[1].data = valuesToSeries(result[i].values);
+                    errData = result[i].values.map(follows(Number, second));
                     break;
                   }
                 }
+                // FIXME this is ignoring timestamps -- write a better
+                // query, or do our own collation?
+                var data = zip(okData, errData, function(ok, err) {
+                  return {'OK': ok, 'Error': err};
+                });
+                console.log(data);
+                //graph.series.addData(data[0]);
+                // the first sample will be the previous end sample, so skip it
+                data.slice(1).forEach(graph.series.addData.bind(graph.series));
+                //graph.series.setTimeBase(now);
                 graph.render();
-                setTimeout(this.refreshChart.bind(this, graph), 5000);
+                setTimeout(this.refreshChart.bind(this, graph), intervalSecs * 1000);
               }
             }.bind(this)
           });
         },
         componentDidMount: function() {
           var chart = React.findDOMNode(this.refs.chart);
+          var lines = [{name: 'OK', color: 'blue'}, {name: 'Error', color: 'red'}];
+          var series = new Rickshaw.Series.FixedDuration(
+                                  lines, undefined /*palette*/,
+                                  {timeInterval: intervalSecs * 1000,
+                                   maxDataPoints: 300 / intervalSecs,
+		                   timeBase: +new Date() / 1000});
           var graph = new Rickshaw.Graph({
             element: chart,
             renderer: 'line',
-            series: [{color: 'steelblue', name: 'OK', data: []},
-                     {color: 'red', name: 'Error', data:[]}],
+            series: series,
             width: 500,
             height: 100,
           });
