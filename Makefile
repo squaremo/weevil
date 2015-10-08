@@ -4,9 +4,9 @@ BUILD_DOCKER_ARGS=-v `pwd`:/home/go/src/weevil/server \
 		  -e GOPATH=/home/go
 BUILD_FLAGS=-ldflags "-s -extldflags \"-static\"" -tags netgo -a
 
-STATIC_FILES:=../js/*.js ../css/*.css
+STATIC_FILES:=res/*.js res/*.css index.html
 
-.PHONY: all clean run run-debug
+.PHONY: all clean run
 
 all: server.uptodate
 
@@ -19,10 +19,7 @@ build.uptodate:
 	docker rm -f weevil-build
 	touch build.uptodate
 
-server.uptodate: weevil Dockerfile $(STATIC_FILES) ../index.html
-	mkdir -p res
-	cp -R $(STATIC_FILES) res/
-	cp ../index.html ./
+server.uptodate: weevil Dockerfile $(STATIC_FILES)
 	docker build -t weevil/server .
 	touch server.uptodate
 
@@ -38,9 +35,5 @@ clean:
 	docker rm -f weevil-build || true
 
 run: server.uptodate
-	docker run --rm -p 7070:7070 weevil/server
-
-run-debug: server.uptodate
-	docker run --rm -p 7070:7070 \
-		-v `pwd`/index.html:/home/weevil/index.html \
-		weevil/server
+	docker run --rm -v `pwd`/res:/home/weevil/res \
+	  -p 7070:7070 weevil/server
