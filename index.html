@@ -7,6 +7,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.min.js"></script>
     <script src="res/js/d3.v3.js"></script> 
     <script src="res/js/rickshaw.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="res/graph.css"/>
+    <link rel="stylesheet" type="text/css" href="res/lines.css"/>
+
+    <style type="text/css">
+      .yAxis {
+        float: left;
+      }
+      .chart {
+        float: left;
+      }
+      .instanceView {
+        clear: both;
+      }
+    </style>
   </head>
   <body>
     <h1>Weave on</h1>
@@ -51,7 +65,7 @@
         render: function() {
           return (
             <div className="serviceView">
-              <span>{this.props.data.name} ({this.props.data.children})</span>
+              <div>{this.props.data.name} ({this.props.data.children})</div>
               <InstanceList service={this.props.data.name}/>
             </div>
           );
@@ -60,14 +74,19 @@
 
       function second(arr) { return arr[1]; }
       function follows(a, b) { return function(x) { return a(b(x)); }; }
-            
       function zip(as, bs, fn) {
-        var len = Math.max(as.length, bs.length);
+        var len = Math.min(as.length, bs.length);
         var res = new Array(len);
         for (var i=0; i<len; i++) {
           res[i] = fn(as[i], bs[i]);
         }
         return res;
+      }
+
+      function renderChart(chart) {
+        chart.graph.render();
+        chart.yAxis.render();
+        chart.xAxis.render();
       }
 
       var intervalSecs = 10;
@@ -101,71 +120,97 @@
       });
 
       var InstanceView = React.createClass({
-        refreshChart: function(graph) {
-          var now = +(new Date()) / 1000;
-          var then = now - intervalSecs;
-
+        getData: function(start, end, k) {
           var query = 'query=rate(microwiki_http_service_requests{service_instance="'+this.props.instance.name+'"}['+intervalSecs+'s])';
-          var interval = '&step='+intervalSecs+'s&start='+then+'&end='+now;
+          var interval = '&step='+intervalSecs+'s&start='+start+'&end='+end;
 
           $.ajax('http://192.168.99.100:9090/api/v1/query_range?'+query+interval, {
             success: function(json) {
-              if (this.isMounted()) {
-                var result = json.data.result;
-                var okData = [], errData = [];
-                for (var i=0; i < result.length; i++) {
-                  switch (result[i].metric.status) {
-                  case "200":
-                    okData = result[i].values.map(follows(Number, second));
-                    break;
-                  case "500":
-                    errData = result[i].values.map(follows(Number, second));
-                    break;
-                  }
+              var result = json.data.result;
+              var okData = [], errData = [];
+              for (var i=0; i < result.length; i++) {
+                switch (result[i].metric.status) {
+                case "200":
+                  okData = result[i].values;
+                  break;
+                case "500":
+                  errData = result[i].values;
+                  break
                 }
-                // FIXME this is ignoring timestamps -- write a better
-                // query, or do our own collation?
-                var data = zip(okData, errData, function(ok, err) {
-                  return {'OK': ok, 'Error': err};
-                });
-                console.log(data);
-                //graph.series.addData(data[0]);
-                // the first sample will be the previous end sample, so skip it
-                data.slice(1).forEach(graph.series.addData.bind(graph.series));
-                //graph.series.setTimeBase(now);
-                graph.render();
-                setTimeout(this.refreshChart.bind(this, graph), intervalSecs * 1000);
               }
+              k(okData, errData);
             }.bind(this)
           });
         },
+        stepChart: function step(chart, lastNow) {
+          var now = +new Date() / 1000;
+          this.getData(lastNow, now, function(okData, errData) {
+            if (this.isMounted()) {
+              var nextNow = lastNow;
+              var data = zip(okData, errData, function(ok, err) {
+                return [{OK: Number(ok[1]), Error: Number(err[1])}, ok[0]];
+              });
+              data.forEach(function(datum) {
+                if (datum[1] > lastNow) {
+                  chart.series.addData.apply(chart.series, datum);
+                  nextNow = datum[1];
+                }
+              });
+              renderChart(chart);
+              setTimeout(step.bind(this, chart, nextNow), intervalSecs * 1000);
+            }
+          }.bind(this));
+        },
         componentDidMount: function() {
-          var chart = React.findDOMNode(this.refs.chart);
-          var lines = [{name: 'OK', color: 'blue'}, {name: 'Error', color: 'red'}];
-          var series = new Rickshaw.Series.FixedDuration(
+          var end = +new Date() / 1000;
+          var start = end - 300;
+          this.getData(start, end, function(okData, errData) {
+            var base = start;
+            function toXY(xy) {
+              return {x: xy[0], y: Number(xy[1])};
+            }
+            var div = React.findDOMNode(this.refs.chart);
+            var lines = [{name: 'OK', color: 'blue', data: okData.map(toXY)},
+                         {name: 'Error', color: 'red', data: errData.map(toXY)}];
+            var series = new Rickshaw.Series.FixedDuration(
                                   lines, undefined /*palette*/,
                                   {timeInterval: intervalSecs * 1000,
                                    maxDataPoints: 300 / intervalSecs,
-		                   timeBase: +new Date() / 1000});
-          var graph = new Rickshaw.Graph({
-            element: chart,
-            renderer: 'line',
-            series: series,
-            width: 500,
-            height: 100,
-          });
-          this.refreshChart(graph);
+		                   timeBase: base});
+            var graph = new Rickshaw.Graph({
+              element: div,
+              renderer: 'line',
+              series: series,
+              width: 500,
+              height: 100,
+            });
+
+            var xAxis = new Rickshaw.Graph.Axis.Time({
+              graph: graph,
+            });
+            var yAxis = new Rickshaw.Graph.Axis.Y({
+              graph: graph,
+              orientation: 'left',
+              height: 100,
+              element: React.findDOMNode(this.refs.chartY)
+            });
+
+            var chart = {graph: graph, series: series, yAxis: yAxis, xAxis: xAxis};
+            renderChart(chart);
+            this.stepChart(chart, end);
+          }.bind(this));
         },
         render: function() {
-          return (<div>
-              <span>{this.props.instance.name} ({this.props.instance.IPAddress}:{this.props.instance.Port})</span>
-              <div ref="chart">
-              </div>
+          return (<div className="instanceView">
+              <div>{this.props.instance.name} ({this.props.instance.IPAddress}:{this.props.instance.Port})</div>
+              <div className="yAxis" ref="chartY"/>
+              <div className="chart" ref="chart"/>
             </div>)
         }
       });
 
       React.render(<ServiceList />, document.getElementById('list'));
     </script>
+
   </body>
 </html>

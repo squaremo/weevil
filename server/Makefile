@@ -4,9 +4,9 @@ BUILD_DOCKER_ARGS=-v `pwd`:/home/go/src/weevil/server \
 		  -e GOPATH=/home/go
 BUILD_FLAGS=-ldflags "-s -extldflags \"-static\"" -tags netgo -a
 
-STATIC_FILES:=../js
+STATIC_FILES:=../js/*.js ../css/*.css
 
-.PHONY: all clean run
+.PHONY: all clean run run-debug
 
 all: server.uptodate
 
@@ -39,3 +39,8 @@ clean:
 
 run: server.uptodate
 	docker run --rm -p 7070:7070 weevil/server
+
+run-debug: server.uptodate
+	docker run --rm -p 7070:7070 \
+		-v `pwd`/index.html:/home/weevil/index.html \
+		weevil/server
