@@ -242,12 +242,30 @@ const Logo = React.createClass({
         },
         render: function() {
           return (<div className="instanceView">
-              <div>{this.props.instance.details.address}:{this.props.instance.details.port} ({this.props.instance.name})</div>
+              <div>{this.props.instance.details.address}:{this.props.instance.details.port}
+                ({maybeTruncate(this.props.instance.name)};
+                 {labels(this.props.instance.details.labels)})
+              </div>
               <div className="yAxis" ref="chartY"/>
               <div className="chart" ref="chart"/>
             </div>)
         }
       });
+
+      function labels(kv) {
+        var s = [];
+        for (var k in kv) {
+          s.push(k + "=" + kv[k]);
+        }
+        return s.join(", ");
+      }
+
+      function maybeTruncate(id) {
+        if (id.length > 12) {
+          return id.substr(0, 12) + '...';
+        }
+        return id;
+      }
 
       React.render(<ServiceList />, document.getElementById('list'));
     </script>
