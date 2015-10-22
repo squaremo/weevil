@@ -4,7 +4,7 @@ BUILD_DOCKER_ARGS=-v `pwd`:/home/go/src/weevil/server \
 		  -e GOPATH=/home/go
 BUILD_FLAGS=-ldflags "-s -extldflags \"-static\"" -tags netgo -a
 
-STATIC_FILES:=res/*.js res/*.css index.html
+STATIC_FILES:=res/*.js res/*.css res/main.css index.html
 
 .PHONY: all clean run
 
@@ -28,6 +28,9 @@ weevil: build.uptodate *.go
 		weevil/build sh -c \
 			'go get -tags netgo . && \
 			 go build $(BUILD_FLAGS) -o $@ .'
+
+res/main.css: res/main.less
+	lessc res/main.less res/main.css
 
 clean:
 	rm -f build.uptodate server.uptodate
