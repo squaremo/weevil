@@ -2,36 +2,28 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"log"
 	"net/http"
-	"strings"
-	"time"
+	"os"
 
-	etcd "github.com/coreos/etcd/client"
+	"github.com/bboreham/coatl/backends"
+	"github.com/bboreham/coatl/data"
+
 	"github.com/gorilla/mux"
-	"golang.org/x/net/context"
 )
-
-const (
-	ServicePrefix = "/weave/service"
-)
-
-var prefixLen = len(ServicePrefix) + 1
 
 func main() {
-	var (
-		etcdAddress string
-	)
+	etcd := os.Getenv("ETCD_ADDRESS")
+	if etcd == "" {
+		etcd = "http://localhost:4001"
+	}
 
-	flag.StringVar(&etcdAddress, "etcd", "http://etcd:4001", "Address of etcd server")
-	flag.Parse()
-
-	api, err := newWeevilAPI(etcdAddress)
-	if err != nil {
+	back := backends.NewBackend([]string{etcd}) // get from env
+	if err := back.Ping(); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Connected to etcd at %s", etcdAddress)
+	log.Printf("Connected to backend\n")
+	api := &api{back}
 
 	router := mux.NewRouter()
 
@@ -57,112 +49,59 @@ func homePage(w http.ResponseWriter, r *http.Request) {
 //=== API handlers
 
 type api struct {
-	keysAPI etcd.KeysAPI
+	backend *backends.Backend
 }
 
-func newWeevilAPI(etcdAddress string) (*api, error) {
-	etcdCfg := etcd.Config{
-		Endpoints:               []string{etcdAddress},
-		Transport:               etcd.DefaultTransport,
-		HeaderTimeoutPerRequest: time.Second,
-	}
-	client, err := etcd.New(etcdCfg)
-	if err != nil {
-		return nil, err
-	}
+type serviceDetails struct {
+	Name    string       `json:"name"`
+	Details data.Service `json:"details"`
+}
 
-	keysAPI := etcd.NewKeysAPI(client)
-	return &api{
-		keysAPI: keysAPI,
-	}, nil
+type service struct {
+	Name     string            `json:"name"`
+	Children []instanceDetails `json:"children"`
+	Details  data.Service      `json:"details"`
+}
+
+type instanceDetails struct {
+	Name    string        `json:"name"`
+	Details data.Instance `json:"details"`
 }
 
 func (api *api) listServices(w http.ResponseWriter, r *http.Request) {
-	opts := &etcd.GetOptions{
-		Recursive: true,
-	}
-	res, err := api.keysAPI.Get(context.Background(), ServicePrefix, opts)
-	if err != nil {
-		http.Error(w, "Error from etcd: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	services, err := servicesFromNode(res.Node)
-	if err != nil {
-		http.Error(w, "Error in value for key: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	var currentService serviceDetails
+	services := []serviceDetails{}
+
+	api.backend.ForeachServiceInstance(func(name string, details data.Service) {
+		currentService = serviceDetails{
+			Name:    name,
+			Details: details,
+		}
+		services = append(services, currentService)
+	}, func(_ string, _ data.Instance) {
+	})
 	json.NewEncoder(w).Encode(services)
 }
 
 func (api *api) listInstances(w http.ResponseWriter, r *http.Request) {
 	args := mux.Vars(r)
-	key := ServicePrefix + "/" + args["service"]
-	// FIXME _details?
-	opts := &etcd.GetOptions{
-		Recursive: true,
-	}
-	res, err := api.keysAPI.Get(context.Background(), key, opts)
+	serviceName := args["service"]
+	details, err := api.backend.GetServiceDetails(serviceName)
 	if err != nil {
-		http.Error(w, "Error from etcd: "+err.Error(), http.StatusInternalServerError)
-		return
+		http.NotFound(w, r)
 	}
-	instances, err := instancesFromNode(res.Node)
-	if err != nil {
-		http.Error(w, "Error in value for key: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	json.NewEncoder(w).Encode(instances)
-}
-
-func servicesFromNode(node *etcd.Node) ([]interface{}, error) {
-	result := []interface{}{}
-	for _, s := range node.Nodes {
-		children := 0
-		service := map[string]interface{}{}
-		service["name"] = s.Key[prefixLen:]
-		result = append(result, service)
-		for _, i := range s.Nodes {
-			if strings.HasSuffix(i.Key, "_details") {
-				details, err := detailsFromNode(i)
-				if err != nil {
-					return nil, err
-				}
-				service["details"] = details
-			} else {
-				children++
-			}
+	children := []instanceDetails{}
+	api.backend.ForeachInstance(serviceName, func(name string, details data.Instance) {
+		instance := instanceDetails{
+			Name:    name,
+			Details: details,
 		}
-		service["children"] = children
+		children = append(children, instance)
+	})
+	service := service{
+		Name:     serviceName,
+		Details:  details,
+		Children: children,
 	}
-	return result, nil
-}
-
-func instancesFromNode(node *etcd.Node) (map[string]interface{}, error) {
-	result := map[string]interface{}{}
-	result["name"] = node.Key[prefixLen:]
-	children := []interface{}{}
-	serviceNameLen := len(node.Key) + 1
-	for _, i := range node.Nodes {
-		details, err := detailsFromNode(i)
-		if err != nil {
-			return nil, err
-		}
-		if strings.HasSuffix(i.Key, "_details") {
-			result["details"] = details
-		} else {
-			details["name"] = i.Key[serviceNameLen:]
-			children = append(children, details)
-		}
-	}
-	result["children"] = children
-	return result, nil
-}
-
-func detailsFromNode(node *etcd.Node) (map[string]interface{}, error) {
-	var details map[string]interface{}
-	err := json.Unmarshal([]byte(node.Value), &details)
-	if err != nil {
-		return nil, err
-	}
-	return details, nil
+	json.NewEncoder(w).Encode(service)
 }
