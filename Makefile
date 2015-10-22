@@ -1,42 +1,37 @@
-BUILD_DOCKER_ARGS=-v `pwd`:/home/go/src/weevil/server \
-		  -e CGO_ENABLED=0 \
-		  --workdir=/home/go/src/weevil/server \
-		  -e GOPATH=/home/go
-BUILD_FLAGS=-ldflags "-s -extldflags \"-static\"" -tags netgo -a
-
+PKG:=github.com/squaremo/weevil
 STATIC_FILES:=res/*.js res/*.css res/main.css index.html
+SRC:=*.go
 
-.PHONY: all clean run
+.PHONY: image clean run
 
-all: server.uptodate
+image: docker/.server.done
 
-build.uptodate:
-	docker run --name=weevil-build $(BUILD_DOCKER_ARGS) \
-		google/golang \
-			sh -c "go clean -i net && \
-			go install -tags netgo std"
-	docker commit weevil-build weevil/build
-	docker rm -f weevil-build
-	touch build.uptodate
+clean:
+	rm -f weevil docker/.server.uptodate
+	rm -f build
 
-server.uptodate: weevil Dockerfile $(STATIC_FILES)
-	docker build -t weevil/server .
-	touch server.uptodate
+.%.done: Dockerfile.%
+	rm -rf build-container
+	mkdir build-container
+	cp -pr $^ build-container
+	docker build -t weevil/$(*F) -f build-container/$(<F) build-container
+	rm -rf build-container
+	touch $@
 
-weevil: build.uptodate *.go
-	docker run --rm $(BUILD_DOCKER_ARGS) \
-		weevil/build sh -c \
-			'go get -tags netgo . && \
-			 go build $(BUILD_FLAGS) -o $@ .'
+docker/.server.done: weevil $(STATIC_FILES)
+
+weevil: docker/.build.done docker/build-in-container.sh $(SRC)
+	rm -rf build/src/$(PKG)
+	mkdir -p build/src/$(PKG)
+	cp -pr $(SRC) build/src/$(PKG)
+	docker run --rm -v $$PWD/build:/go \
+	    -v $$PWD/docker/build-in-container.sh:/build.sh \
+	    --workdir=/go/src/$(PKG) -e GOPATH=/go weevil/build sh /build.sh
+	cp build/bin/weevil $@
 
 res/main.css: res/main.less
 	lessc res/main.less res/main.css
 
-clean:
-	rm -f build.uptodate server.uptodate
-	rm -f weevil
-	docker rm -f weevil-build || true
-
-run: server.uptodate
+run: docker/.server.done
 	docker run --rm -v `pwd`/res:/home/weevil/res \
 	  -p 7070:7070 weevil/server

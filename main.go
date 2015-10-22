@@ -18,7 +18,7 @@ func main() {
 		etcd = "http://localhost:4001"
 	}
 
-	back := backends.NewBackend([]string{etcd}) // get from env
+	back := backends.NewBackend([]string{etcd})
 	if err := back.Ping(); err != nil {
 		log.Fatal(err)
 	}
