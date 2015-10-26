@@ -9,7 +9,6 @@
     <script src="res/rickshaw.min.js"></script>
     <link rel="stylesheet" type="text/css" href="res/main.css"/>
     <link rel="stylesheet" type="text/css" href="res/graph.css"/>
-    <link rel="stylesheet" type="text/css" href="res/lines.css"/>
 
     <style type="text/css">
       .yAxis {
@@ -18,12 +17,20 @@
       .chart {
         float: left;
       }
+      .legend {
+        float: left;
+      }
       .instanceView {
         clear: both;
       }
       #main {
         position: relative;
         top: 100px;
+      }
+
+      .rickshaw_legend {
+        color: inherit;
+        background-color: inherit;
       }
     </style>
   </head>
@@ -235,6 +242,11 @@ const Logo = React.createClass({
               element: React.findDOMNode(this.refs.chartY)
             });
 
+            var legend = new Rickshaw.Graph.Legend({
+              element: React.findDOMNode(this.refs.legend),
+              graph: graph
+            });
+
             var chart = {graph: graph, series: series, yAxis: yAxis, xAxis: xAxis};
             renderChart(chart);
             this.stepChart(chart, end);
@@ -248,6 +260,7 @@ const Logo = React.createClass({
               </div>
               <div className="yAxis" ref="chartY"/>
               <div className="chart" ref="chart"/>
+              <div className="legend" ref="legend"/>
             </div>)
         }
       });
